@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # --- App Configuration ---
-APP_VERSION = "2.0.0"
+APP_VERSION = "1.0.0"
 FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "False") == "True"
 
 # --- Firebase Configuration ---
