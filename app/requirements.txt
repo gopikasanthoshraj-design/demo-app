@@ -1,4 +1,2 @@
 Flask
-werkzeug
 firebase-admin
-gunicorn

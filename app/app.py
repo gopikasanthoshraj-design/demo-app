@@ -4,47 +4,61 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # --- App Configuration ---
-APP_VERSION = "2.0.0"  # You can change this version for updates
+APP_VERSION = "1.0.0"
 FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "False") == "True"
 
 # --- Firebase Configuration ---
-# Use the GOOGLE_APPLICATION_CREDENTIALS environment variable to locate the credentials
-firebase_cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', 'serviceAccountKey.json')
+# You need to provide your Firebase service account key.
+# For local development, you can place a 'serviceAccountKey.json' file
+# in the same directory as app.py or set the GOOGLE_APPLICATION_CREDENTIALS
+# environment variable.
+# For deployment, consider using environment variables or other secure methods.
 
 try:
-    if firebase_cred_path:
-        cred = credentials.Certificate(firebase_cred_path)
+    # Attempt to initialize Firebase from environment variable
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        cred = credentials.ApplicationDefault()
+    else:
+        # Fallback to local file if not in environment
+        cred_path = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+        else:
+            print("WARNING: 'serviceAccountKey.json' not found and GOOGLE_APPLICATION_CREDENTIALS not set.")
+            print("Firestore functionality will be limited or fail.")
+            cred = None
+
+    if cred:
         firebase_admin.initialize_app(cred)
         db = firestore.client()
         print("Firebase initialized successfully.")
     else:
         db = None
         print("Firebase not initialized. Check your credentials setup.")
-        flash("Firebase not initialized. Please check your credentials setup.")
+
 except Exception as e:
     db = None
-    flash(f"Error initializing Firebase: {e}")
     print(f"Error initializing Firebase: {e}")
+    print("Firestore functionality will be unavailable.")
 
-# --- Flask App Setup ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_secret_key_here')  # Use a strong secret key in production
+app.config['SECRET_KEY'] = 'your_secret_key_here'  # Replace with a strong secret key in production
 
 # --- Routes ---
+
 @app.route('/')
 def index():
     notes = []
     if db:
         try:
-            # Fetch notes from Firestore
             notes_ref = db.collection('notes').order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
             for doc in notes_ref:
                 note = doc.to_dict()
                 note['id'] = doc.id
                 notes.append(note)
         except Exception as e:
-            flash(f"Error fetching notes from Firestore: {e}")
             print(f"Error fetching notes from Firestore: {e}")
+            # Optionally, add a flash message for the user
     return render_template('index.html', notes=notes, app_version=APP_VERSION)
 
 @app.route('/add', methods=['GET', 'POST'])
@@ -52,29 +66,23 @@ def add_note():
     if request.method == 'POST':
         title = request.form.get('title')
         content = request.form.get('content')
-        
-        if not title or not content:
-            flash("Both title and content are required!")
-            return redirect(url_for('add_note'))
-        
-        if db:
+        if title and content and db:
             try:
                 db.collection('notes').add({
                     'title': title,
                     'content': content,
                     'timestamp': firestore.SERVER_TIMESTAMP
                 })
-                flash("Note added successfully!")
                 return redirect(url_for('index'))
             except Exception as e:
-                flash(f"Error adding note to Firestore: {e}")
                 print(f"Error adding note to Firestore: {e}")
+                # Optionally, add a flash message for the user
         else:
-            flash("Firebase database is not available. Please check your credentials setup.")
-    
+            # Handle cases where title or content is missing, or db is not initialized
+            pass  # For now, just render the form again
     return render_template('add_note.html', app_version=APP_VERSION)
 
-# --- Main Entry Point ---
+# --- Run the Flask app ---
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))  # Cloud Run expects the port to be set via this env variable
-    app.run(debug=FLASK_DEBUG, host='0.0.0.0', port=port)
+    # Flask development server (not recommended for production)
+    app.run(debug=FLASK_DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
