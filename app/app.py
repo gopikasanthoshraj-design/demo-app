@@ -60,26 +60,51 @@ def index():
             print(f"Error fetching notes from Firestore: {e}")
             # Optionally, add a flash message for the user
     return render_template('index.html', notes=notes, app_version=APP_VERSION)
-
 @app.route('/add', methods=['GET', 'POST'])
 def add_note():
     if request.method == 'POST':
+        # Log the request method
+        print("POST request received for adding a note.")
+        
+        # Get the form data
         title = request.form.get('title')
         content = request.form.get('content')
+        
+        # Log the form data
+        print(f"Received title: {title}")
+        print(f"Received content: {content}")
+        
+        # Check if title, content, and Firestore db are available
         if title and content and db:
             try:
+                print("Firestore is initialized and valid.")
+                
+                # Log before adding the note to Firestore
+                print("Attempting to add note to Firestore...")
+                
+                # Add note to Firestore
                 db.collection('notes').add({
                     'title': title,
                     'content': content,
                     'timestamp': firestore.SERVER_TIMESTAMP
                 })
+                
+                # Log success
+                print("Note successfully added to Firestore.")
+                
+                # Redirect to index page
                 return redirect(url_for('index'))
             except Exception as e:
+                # Log error if anything goes wrong while adding the note
                 print(f"Error adding note to Firestore: {e}")
-                # Optionally, add a flash message for the user
+                # Optionally, you can use flash to notify the user
         else:
-            # Handle cases where title or content is missing, or db is not initialized
-            pass  # For now, just render the form again
+            # Log the case where title or content is missing, or db is not initialized
+            if not title or not content:
+                print("Error: Title or Content is missing.")
+            if not db:
+                print("Error: Firestore db is not initialized.")
+            
     return render_template('add_note.html', app_version=APP_VERSION)
 
 # --- Run the Flask app ---
