@@ -1,62 +1,89 @@
-from flask import Flask, render_template, request, redirect, url_for
 import os
+from flask import Flask, render_template, request, redirect, url_for
 import firebase_admin
 from firebase_admin import credentials, firestore
 
+# --- App Configuration ---
 APP_VERSION = "1.0.0"
+FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "False") == "True"
+
+# --- Firebase Configuration ---
+# You need to provide your Firebase service account key.
+# For local development, you can place a 'serviceAccountKey.json' file
+# in the same directory as app.py or set the GOOGLE_APPLICATION_CREDENTIALS
+# environment variable.
+# For deployment, consider using environment variables or other secure methods.
+
+try:
+    # Attempt to initialize Firebase from environment variable
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        cred = credentials.ApplicationDefault()
+    else:
+        # Fallback to local file if not in environment
+        cred_path = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+        else:
+            print("WARNING: 'serviceAccountKey.json' not found and GOOGLE_APPLICATION_CREDENTIALS not set.")
+            print("Firestore functionality will be limited or fail.")
+            cred = None
+
+    if cred:
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        print("Firebase initialized successfully.")
+    else:
+        db = None
+        print("Firebase not initialized. Check your credentials setup.")
+
+except Exception as e:
+    db = None
+    print(f"Error initializing Firebase: {e}")
+    print("Firestore functionality will be unavailable.")
+
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key_here' # Replace with a strong secret key in production
 
-# Initialize Firebase Admin SDK
-# Ensure 'firebase-service-account.json' is in the same directory as app.py
-# or provide the correct path to your service account key file.
-# For production, consider using environment variables for the path or credentials.
-try:
-    cred = credentials.Certificate("firebase-service-account.json")
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
-except Exception as e:
-    print(f"Error initializing Firebase: {e}")
-    print("Please ensure 'firebase-service-account.json' is correctly configured.")
-    db = None # Set db to None if initialization fails
+# --- Routes ---
 
-
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def index():
-    if db is None:
-        return "Firestore initialization failed. Check your service account key.", 500
-
-    if request.method == 'POST':
-        note_content = request.form.get('note')
-        if note_content:
-            db.collection('notes').add({'content': note_content, 'timestamp': firestore.SERVER_TIMESTAMP})
-        return redirect(url_for('index'))
-    
     notes = []
-    try:
-        notes_ref = db.collection('notes').order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
-        for doc in notes_ref:
-            note = doc.to_dict()
-            note['id'] = doc.id
-            notes.append(note)
-    except Exception as e:
-        print(f"Error fetching notes from Firestore: {e}")
-        # Optionally, you can render an error message to the user
-        return "Error fetching notes.", 500
-
+    if db:
+        try:
+            notes_ref = db.collection('notes').order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
+            for doc in notes_ref:
+                note = doc.to_dict()
+                note['id'] = doc.id
+                notes.append(note)
+        except Exception as e:
+            print(f"Error fetching notes from Firestore: {e}")
+            # Optionally, add a flash message for the user
     return render_template('index.html', notes=notes, app_version=APP_VERSION)
 
-@app.route('/delete/<note_id>', methods=['POST'])
-def delete_note(note_id):
-    if db is None:
-        return "Firestore initialization failed. Check your service account key.", 500
-    try:
-        db.collection('notes').document(note_id).delete()
-    except Exception as e:
-        print(f"Error deleting note from Firestore: {e}")
-        # Optionally, you can render an error message to the user
-        return "Error deleting note.", 500
-    return redirect(url_for('index'))
+@app.route('/add', methods=['GET', 'POST'])
+def add_note():
+    if request.method == 'POST':
+        title = request.form.get('title')
+        content = request.form.get('content')
+        if title and content and db:
+            try:
+                db.collection('notes').add({
+                    'title': title,
+                    'content': content,
+                    'timestamp': firestore.SERVER_TIMESTAMP
+                })
+                return redirect(url_for('index'))
+            except Exception as e:
+                print(f"Error adding note to Firestore: {e}")
+                # Optionally, add a flash message for the user
+        else:
+            # Handle cases where title or content is missing, or db is not initialized
+            pass # For now, just render the form again
+    return render_template('add_note.html', app_version=APP_VERSION)
+
+# You can add more routes for editing, deleting, etc.
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=FLASK_DEBUG, host='0.0.0.0', port=5000)
