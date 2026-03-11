@@ -13,6 +13,7 @@ COPY . .
 
 # Expose the port that Flask runs on
 EXPOSE 5000
+EXPOSE 8080
 
 # Define environment variable
 ENV FLASK_APP=app.py

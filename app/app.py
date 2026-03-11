@@ -86,4 +86,4 @@ def add_note():
 # You can add more routes for editing, deleting, etc.
 
 if __name__ == '__main__':
-    app.run(debug=FLASK_DEBUG, host='0.0.0.0', port=5000)
+    app.run(debug=FLASK_DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
