@@ -1,23 +1,20 @@
 # Use an official Python runtime as a parent image
-FROM python:3.9-slim-buster
+FROM python:3.11-slim
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Install any needed packages specified in requirements.txt
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the current directory contents into the container at /app
+# Copy the current directory contents into the container
 COPY . .
 
-# Expose the port that Flask runs on
-EXPOSE 5000
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Set environment variable for Cloud Run
+ENV PORT=8080
+
+# Expose the port the app runs on
 EXPOSE 8080
 
-# Define environment variable
-ENV FLASK_APP=app.py
-ENV FLASK_DEBUG=False
-
-# Run app.py when the container launches
-CMD ["flask", "run", "--host", "0.0.0.0"]
+# Run the app with Gunicorn as the entry point
+CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "app:app"]

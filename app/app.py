@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -8,12 +8,7 @@ APP_VERSION = "1.0.0"
 FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "False") == "True"
 
 # --- Firebase Configuration ---
-# You need to provide your Firebase service account key.
-# For local development, you can place a 'serviceAccountKey.json' file
-# in the same directory as app.py or set the GOOGLE_APPLICATION_CREDENTIALS
-# environment variable.
-# For deployment, consider using environment variables or other secure methods.
-
+# Initialize Firebase
 try:
     # Attempt to initialize Firebase from environment variable
     if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
@@ -24,8 +19,8 @@ try:
         if os.path.exists(cred_path):
             cred = credentials.Certificate(cred_path)
         else:
+            flash("WARNING: 'serviceAccountKey.json' not found and GOOGLE_APPLICATION_CREDENTIALS not set. Firestore functionality will be limited or fail.")
             print("WARNING: 'serviceAccountKey.json' not found and GOOGLE_APPLICATION_CREDENTIALS not set.")
-            print("Firestore functionality will be limited or fail.")
             cred = None
 
     if cred:
@@ -35,15 +30,17 @@ try:
     else:
         db = None
         print("Firebase not initialized. Check your credentials setup.")
+        flash("Firebase not initialized. Check your credentials setup.")
 
 except Exception as e:
     db = None
+    flash(f"Error initializing Firebase: {e}. Firestore functionality will be unavailable.")
     print(f"Error initializing Firebase: {e}")
     print("Firestore functionality will be unavailable.")
 
-
+# --- Flask App Setup ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key_here' # Replace with a strong secret key in production
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_secret_key_here')  # Consider using a secret key from env variables
 
 # --- Routes ---
 
@@ -58,8 +55,8 @@ def index():
                 note['id'] = doc.id
                 notes.append(note)
         except Exception as e:
+            flash(f"Error fetching notes from Firestore: {e}")
             print(f"Error fetching notes from Firestore: {e}")
-            # Optionally, add a flash message for the user
     return render_template('index.html', notes=notes, app_version=APP_VERSION)
 
 @app.route('/add', methods=['GET', 'POST'])
@@ -67,23 +64,29 @@ def add_note():
     if request.method == 'POST':
         title = request.form.get('title')
         content = request.form.get('content')
-        if title and content and db:
+        
+        if not title or not content:
+            flash("Title and content are required fields!")
+            return redirect(url_for('add_note'))
+        
+        if db:
             try:
                 db.collection('notes').add({
                     'title': title,
                     'content': content,
                     'timestamp': firestore.SERVER_TIMESTAMP
                 })
+                flash("Note added successfully!")
                 return redirect(url_for('index'))
             except Exception as e:
+                flash(f"Error adding note to Firestore: {e}")
                 print(f"Error adding note to Firestore: {e}")
-                # Optionally, add a flash message for the user
         else:
-            # Handle cases where title or content is missing, or db is not initialized
-            pass # For now, just render the form again
+            flash("Firebase database is not available. Please check your configuration.")
+    
     return render_template('add_note.html', app_version=APP_VERSION)
 
-# You can add more routes for editing, deleting, etc.
-
+# --- Main Entry Point ---
 if __name__ == '__main__':
-    app.run(debug=FLASK_DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    port = int(os.environ.get("PORT", 8080))
+    app.run(debug=FLASK_DEBUG, host='0.0.0.0', port=port)
